@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { AddEventModal } from '@/components/AddEventModal';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -9,64 +9,77 @@ import { Card } from '@/components/ui';
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { EVENT_TYPES } from '@/constants/temple';
+import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
+import { createEvent, fetchEvents } from '@/lib/events';
 import type { EventDraft, TempleEvent } from '@/types';
 
-const INITIAL_EVENTS: TempleEvent[] = [
-  {
-    id: '1',
-    title: 'Hanuman Jayanti',
-    event_type: 'festival',
-    price: 0,
-    start_time: '2026-06-05T18:00:00',
-  },
-  {
-    id: '2',
-    title: 'Satyanarayan Puja',
-    event_type: 'puja',
-    price: 51,
-    start_time: '2026-06-12T09:00:00',
-  },
-  {
-    id: '3',
-    title: 'Weekly Satsang',
-    event_type: 'festival',
-    price: 0,
-    start_time: '2026-06-08T10:00:00',
-  },
-];
-
 export default function CalendarScreen() {
+  const { user } = useAuth();
   const scheme = useColorScheme();
   const colors = Colors[scheme ?? 'light'];
 
-  const [events, setEvents] = useState<TempleEvent[]>(INITIAL_EVENTS);
+  const [events, setEvents] = useState<TempleEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const markedDates = useMemo(() => {
-    return events.reduce<Record<string, { marked: boolean; dotColor: string }>>((acc, event) => {
-      const dateKey = event.start_time.split('T')[0];
-      acc[dateKey] = { marked: true, dotColor: colors.accent };
-      return acc;
-    }, {});
-  }, [events, colors.accent]);
+  const loadEvents = useCallback(async () => {
+    try {
+      const nextEvents = await fetchEvents();
+      setEvents(nextEvents);
+    } catch (error) {
+      Alert.alert('Could not load events', error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadEvents();
+    }, [loadEvents])
+  );
+
+  const markedDates = events.reduce<Record<string, { marked: boolean; dotColor: string }>>((acc, event) => {
+    const dateKey = event.start_time.split('T')[0];
+    acc[dateKey] = { marked: true, dotColor: colors.accent };
+    return acc;
+  }, {});
 
   const selectedDayEvents = events
     .filter((e) => e.start_time.startsWith(selectedDate))
     .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
-  const handleAddEvent = (draft: EventDraft) => {
-    router.push({
-      pathname: '/payment',
-      params: {
-        title: draft.title,
-        eventType: draft.eventType,
-        price: String(draft.price),
-        date: draft.date,
-        time: draft.time,
-      },
-    });
+  const handleAddEvent = async (draft: EventDraft) => {
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to add an event.');
+      return;
+    }
+
+    try {
+      const event = await createEvent(draft, user.id);
+
+      if (event.price > 0) {
+        router.push({
+          pathname: '/payment',
+          params: {
+            eventId: event.id,
+            title: event.title,
+            eventType: event.event_type,
+            price: String(event.price),
+            date: draft.date,
+            time: draft.time,
+          },
+        });
+        return;
+      }
+
+      await loadEvents();
+      Alert.alert('Event saved', `"${event.title}" has been added to the calendar.`);
+    } catch (error) {
+      Alert.alert('Could not save event', error instanceof Error ? error.message : 'Unknown error');
+    }
   };
 
   return (
@@ -102,10 +115,17 @@ export default function CalendarScreen() {
         </Card>
 
         <Text style={styles.sectionTitle}>
-          Events on {new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+          Events on{' '}
+          {new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+          })}
         </Text>
 
-        {selectedDayEvents.length === 0 ? (
+        {loading ? (
+          <Text style={{ color: colors.textSecondary }}>Loading events...</Text>
+        ) : selectedDayEvents.length === 0 ? (
           <Text style={{ color: colors.textSecondary }}>No events scheduled.</Text>
         ) : (
           selectedDayEvents.map((event) => {
@@ -122,6 +142,11 @@ export default function CalendarScreen() {
                 <Text style={{ marginTop: 4, fontWeight: '600' }}>
                   {new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </Text>
+                {event.payment_status === 'pending' && (
+                  <Text style={{ color: colors.accent, marginTop: 6, fontWeight: '600' }}>
+                    Payment pending
+                  </Text>
+                )}
               </Card>
             );
           })

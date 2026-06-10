@@ -11,7 +11,7 @@ import type { EventDraft } from '@/types';
 type AddEventModalProps = {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (draft: EventDraft) => void;
+  onSubmit: (draft: EventDraft) => void | Promise<void>;
 };
 
 export function AddEventModal({ visible, onClose, onSubmit }: AddEventModalProps) {
@@ -23,20 +23,27 @@ export function AddEventModal({ visible, onClose, onSubmit }: AddEventModalProps
   const [price, setPrice] = useState('51');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [time, setTime] = useState('09:00');
+  const [submitting, setSubmitting] = useState(false);
 
   const selectedType = EVENT_TYPES.find((t) => t.id === eventType);
 
-  const handleSubmit = () => {
-    if (!title.trim()) return;
-    onSubmit({
-      title: title.trim(),
-      eventType,
-      price: Number(price) || selectedType?.basePrice || 0,
-      date,
-      time,
-    });
-    setTitle('');
-    onClose();
+  const handleSubmit = async () => {
+    if (!title.trim() || submitting) return;
+
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        title: title.trim(),
+        eventType,
+        price: Number(price) || selectedType?.basePrice || 0,
+        date,
+        time,
+      });
+      setTitle('');
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -81,7 +88,7 @@ export function AddEventModal({ visible, onClose, onSubmit }: AddEventModalProps
             <Input label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} placeholder="2026-06-05" />
             <Input label="Time (HH:MM)" value={time} onChangeText={setTime} placeholder="09:00" />
 
-            <Button title="Continue to Payment" onPress={handleSubmit} style={{ marginTop: 8 }} />
+            <Button title="Continue to Payment" onPress={handleSubmit} loading={submitting} style={{ marginTop: 8 }} />
             <Button title="Cancel" onPress={onClose} variant="outline" style={{ marginTop: 8 }} />
           </ScrollView>
         </Pressable>

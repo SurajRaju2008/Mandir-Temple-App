@@ -49,6 +49,11 @@ create policy "Users can create events"
   to authenticated
   with check (auth.uid() = user_id);
 
+create policy "Users can update own events"
+  on public.events for update
+  to authenticated
+  using (auth.uid() = user_id);
+
 -- Notifications
 create table if not exists public.notifications (
   id uuid default gen_random_uuid() primary key,
@@ -68,6 +73,10 @@ create policy "Users can view own notifications"
 create policy "Users can update own notifications"
   on public.notifications for update
   using (auth.uid() = user_id);
+
+create policy "Users can insert own notifications"
+  on public.notifications for insert
+  with check (auth.uid() = user_id);
 
 -- Profiles are created from the app after signup, once the user has an active session.
 -- Do not auto-create empty profile rows here, or users will skip the create-profile screen.

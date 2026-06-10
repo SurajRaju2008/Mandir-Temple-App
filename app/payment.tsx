@@ -6,10 +6,14 @@ import { Button, Card, Input } from '@/components/ui';
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { EVENT_TYPES } from '@/constants/temple';
+import { useAuth } from '@/context/AuthContext';
 import { useColorScheme } from '@/components/useColorScheme';
+import { confirmEventPayment } from '@/lib/events';
+import { createNotification } from '@/lib/notifications';
 
 export default function PaymentScreen() {
   const params = useLocalSearchParams<{
+    eventId?: string;
     title?: string;
     eventType?: string;
     price?: string;
@@ -17,6 +21,7 @@ export default function PaymentScreen() {
     time?: string;
   }>();
 
+  const { user } = useAuth();
   const scheme = useColorScheme();
   const colors = Colors[scheme ?? 'light'];
 
@@ -36,17 +41,34 @@ export default function PaymentScreen() {
       return;
     }
 
+    if (!params.eventId) {
+      Alert.alert('Missing event', 'This payment is not linked to a saved event.');
+      return;
+    }
+
     setLoading(true);
 
-    // Stripe integration: replace with @stripe/stripe-react-native + Supabase Edge Function
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    try {
+      // Temporary placeholder until Stripe PaymentSheet is wired up.
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await confirmEventPayment(params.eventId);
 
-    setLoading(false);
-    Alert.alert(
-      'Payment Submitted',
-      `Your sponsorship "${params.title}" ($${price}) has been recorded. Connect Stripe for live payments.`,
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+      if (user) {
+        await createNotification({
+          userId: user.id,
+          title: 'Sponsorship confirmed',
+          body: `Your sponsorship "${params.title}" for ${params.date} has been received. Thank you!`,
+        });
+      }
+
+      Alert.alert('Payment submitted', `Your sponsorship "${params.title}" ($${price}) has been recorded.`, [
+        { text: 'OK', onPress: () => router.replace('/(tabs)/calendar') },
+      ]);
+    } catch (error) {
+      Alert.alert('Payment failed', error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -75,8 +97,8 @@ export default function PaymentScreen() {
         <Input label="CVC" value={cvc} onChangeText={setCvc} placeholder="123" secureTextEntry />
 
         <Text style={[styles.note, { color: colors.textSecondary }]}>
-          Payments are processed securely via Stripe. Wire up a Supabase Edge Function to create PaymentIntents
-          before going live.
+          Payments will use Stripe PaymentSheet next. For now this screen marks the saved event as confirmed after
+          payment.
         </Text>
 
         <Button title={`Pay $${price.toFixed(2)}`} onPress={handlePay} loading={loading} />

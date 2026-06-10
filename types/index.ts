@@ -17,6 +17,7 @@ export type TempleEvent = {
   end_time?: string;
   description?: string;
   user_id?: string;
+  payment_status?: string;
 };
 
 export type Notification = {

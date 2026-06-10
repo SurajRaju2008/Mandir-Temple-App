@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import { useFocusEffect } from 'expo-router';
 
 import { MiniCalendarModal } from '@/components/MiniCalendarModal';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -9,24 +10,8 @@ import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { getDailyQuote, TEMPLE } from '@/constants/temple';
 import { useColorScheme } from '@/components/useColorScheme';
+import { fetchEvents } from '@/lib/events';
 import type { TempleEvent } from '@/types';
-
-const SAMPLE_EVENTS: TempleEvent[] = [
-  {
-    id: '1',
-    title: 'Hanuman Jayanti',
-    event_type: 'festival',
-    price: 0,
-    start_time: '2026-06-05T18:00:00',
-  },
-  {
-    id: '2',
-    title: 'Weekly Satsang',
-    event_type: 'festival',
-    price: 0,
-    start_time: '2026-06-08T10:00:00',
-  },
-];
 
 export default function HomeScreen() {
   const scheme = useColorScheme();
@@ -35,6 +20,19 @@ export default function HomeScreen() {
 
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [events, setEvents] = useState<TempleEvent[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchEvents()
+        .then(setEvents)
+        .catch(() => setEvents([]));
+    }, [])
+  );
+
+  const upcomingEvents = events
+    .filter((event) => new Date(event.start_time) >= new Date())
+    .sort((a, b) => a.start_time.localeCompare(b.start_time));
 
   const openMaps = () => {
     const query = encodeURIComponent(TEMPLE.address);
@@ -101,9 +99,10 @@ export default function HomeScreen() {
           <Card style={styles.calendarPreview}>
             <Text style={styles.sectionTitle}>Upcoming Events</Text>
             <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>
-              Tap to open calendar — {SAMPLE_EVENTS.length} events this month
+              Tap to open calendar — {upcomingEvents.length} upcoming event
+              {upcomingEvents.length === 1 ? '' : 's'}
             </Text>
-            {SAMPLE_EVENTS.slice(0, 2).map((event) => (
+            {upcomingEvents.slice(0, 2).map((event) => (
               <RNView key={event.id} style={[styles.eventChip, { backgroundColor: `${colors.tint}18` }]}>
                 <Text style={{ fontWeight: '600' }}>{event.title}</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
@@ -118,7 +117,7 @@ export default function HomeScreen() {
       <MiniCalendarModal
         visible={calendarVisible}
         onClose={() => setCalendarVisible(false)}
-        events={SAMPLE_EVENTS}
+        events={upcomingEvents}
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
       />
