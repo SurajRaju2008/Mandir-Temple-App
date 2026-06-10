@@ -1,0 +1,2 @@
+-- Profiles are created from the app on the create-profile screen.
+-- Run remove-profile-trigger.sql if you previously enabled auto-profile creation.

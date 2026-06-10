@@ -69,22 +69,5 @@ create policy "Users can update own notifications"
   on public.notifications for update
   using (auth.uid() = user_id);
 
--- Auto-create profile trigger (optional backup if client upsert fails)
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, full_name, gotra, email)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'full_name', ''),
-    coalesce(new.raw_user_meta_data->>'gotra', ''),
-    new.email
-  );
-  return new;
-end;
-$$ language plpgsql security definer;
-
--- Uncomment if you prefer server-side profile creation:
--- create trigger on_auth_user_created
---   after insert on auth.users
---   for each row execute procedure public.handle_new_user();
+-- Profiles are created from the app after signup, once the user has an active session.
+-- Do not auto-create empty profile rows here, or users will skip the create-profile screen.

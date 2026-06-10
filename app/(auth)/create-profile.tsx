@@ -1,4 +1,4 @@
-import { Link, router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 
@@ -8,35 +8,39 @@ import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 
-export default function SignUpScreen() {
-  const { signUp } = useAuth();
+export default function CreateProfileScreen() {
+  const { session, profile, loading, createProfile } = useAuth();
   const scheme = useColorScheme();
   const colors = Colors[scheme ?? 'light'];
 
   const [fullName, setFullName] = useState('');
   const [gotra, setGotra] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSignUp = async () => {
+  if (!loading && !session) {
+    return <Redirect href="/(auth)/sign-in" />;
+  }
+
+  if (!loading && profile) {
+    return <Redirect href="/(tabs)" />;
+  }
+
+  const handleCreateProfile = async () => {
     if (!fullName.trim() || !gotra.trim()) {
       setError('Please enter your name and gotra.');
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     setError(null);
 
-    const result = await signUp({
-      email: email.trim(),
-      password,
+    const result = await createProfile({
       fullName: fullName.trim(),
       gotra: gotra.trim(),
     });
 
-    setLoading(false);
+    setSubmitting(false);
 
     if (result.error) {
       setError(result.error);
@@ -52,40 +56,18 @@ export default function SignUpScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.hero} lightColor="transparent" darkColor="transparent">
-          <Text style={styles.heading}>Create Account</Text>
+          <Text style={styles.heading}>Create Your Profile</Text>
           <Text style={[styles.subheading, { color: colors.textSecondary }]}>
-            Join the temple community. Your gotra helps us personalize religious services.
+            Your account is ready. Add your details so we can personalize temple services.
           </Text>
         </View>
 
         <Input label="Full Name" value={fullName} onChangeText={setFullName} placeholder="Your name" />
         <Input label="Gotra" value={gotra} onChangeText={setGotra} placeholder="e.g. Bharadwaj" />
-        <Input
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <Input
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Min. 6 characters"
-          secureTextEntry
-          autoCapitalize="none"
-        />
 
         {error && <Text style={[styles.error, { color: colors.error }]}>{error}</Text>}
 
-        <Button title="Sign Up" onPress={handleSignUp} loading={loading} />
-
-        <Link href="/(auth)/sign-in" style={styles.link}>
-          <Text style={{ color: colors.tint, textAlign: 'center', marginTop: 20 }}>
-            Already have an account? Sign in
-          </Text>
-        </Link>
+        <Button title="Save Profile" onPress={handleCreateProfile} loading={submitting} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -111,8 +93,5 @@ const styles = StyleSheet.create({
   error: {
     marginBottom: 12,
     textAlign: 'center',
-  },
-  link: {
-    marginTop: 8,
   },
 });

@@ -5,7 +5,7 @@ import { View } from '@/components/Themed';
 import { useAuth } from '@/context/AuthContext';
 
 export default function Index() {
-  const { session, loading } = useAuth();
+  const { session, profile, loading } = useAuth();
 
   if (loading) {
     return (
@@ -13,6 +13,10 @@ export default function Index() {
         <ActivityIndicator size="large" />
       </View>
     );
+  }
+
+  if (session && !profile) {
+    return <Redirect href="/(auth)/create-profile" />;
   }
 
   if (session) {

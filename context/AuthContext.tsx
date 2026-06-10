@@ -4,18 +4,19 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import type { Profile } from '@/types';
 
+type ContinueResult = {
+  error: string | null;
+  needsEmailConfirmation: boolean;
+  needsProfile: boolean;
+};
+
 type AuthContextValue = {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (params: {
-    email: string;
-    password: string;
-    fullName: string;
-    gotra: string;
-  }) => Promise<{ error: string | null }>;
+  continueWithEmail: (email: string, password: string) => Promise<ContinueResult>;
+  createProfile: (params: { fullName: string; gotra: string }) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -27,11 +28,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    if (!isSupabaseConfigured) return;
+  const loadProfile = async (userId: string) => {
+    if (!isSupabaseConfigured) return null;
 
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) setProfile(data as Profile);
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+    const nextProfile = data ? (data as Profile) : null;
+    setProfile(nextProfile);
+    return nextProfile;
   };
 
   useEffect(() => {
@@ -40,18 +43,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+    const init = async () => {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+
       setSession(currentSession);
       if (currentSession?.user) {
-        fetchProfile(currentSession.user.id);
+        await loadProfile(currentSession.user.id);
       }
       setLoading(false);
-    });
+    };
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    init();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       setSession(nextSession);
       if (nextSession?.user) {
-        fetchProfile(nextSession.user.id);
+        await loadProfile(nextSession.user.id);
       } else {
         setProfile(null);
       }
@@ -60,23 +69,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const continueWithEmail = async (email: string, password: string): Promise<ContinueResult> => {
     if (!isSupabaseConfigured) {
-      return { error: 'Supabase is not configured. Add your keys to .env' };
+      return {
+        error: 'Supabase is not configured. Add your keys to .env',
+        needsEmailConfirmation: false,
+        needsProfile: false,
+      };
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
+    const normalizedEmail = email.trim();
+
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (!signInError && signInData.session?.user) {
+      setSession(signInData.session);
+      const existingProfile = await loadProfile(signInData.session.user.id);
+      return {
+        error: null,
+        needsEmailConfirmation: false,
+        needsProfile: !existingProfile,
+      };
+    }
+
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (signUpError) {
+      return { error: signUpError.message, needsEmailConfirmation: false, needsProfile: false };
+    }
+
+    if (signUpData.user?.identities?.length === 0) {
+      return {
+        error: 'An account with this email already exists. Check your password and try again.',
+        needsEmailConfirmation: false,
+        needsProfile: false,
+      };
+    }
+
+    if (signUpData.session?.user) {
+      setSession(signUpData.session);
+      setProfile(null);
+      return {
+        error: null,
+        needsEmailConfirmation: false,
+        needsProfile: true,
+      };
+    }
+
+    return {
+      error: null,
+      needsEmailConfirmation: true,
+      needsProfile: false,
+    };
   };
 
-  const signUp = async ({
-    email,
-    password,
+  const createProfile = async ({
     fullName,
     gotra,
   }: {
-    email: string;
-    password: string;
     fullName: string;
     gotra: string;
   }) => {
@@ -84,21 +140,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: 'Supabase is not configured. Add your keys to .env' };
     }
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user?.email) {
+      return { error: 'You must be signed in to create a profile.' };
+    }
+
+    const { error } = await supabase.from('profiles').insert({
+      id: user.id,
+      full_name: fullName.trim(),
+      gotra: gotra.trim(),
+      email: user.email,
+    });
 
     if (error) return { error: error.message };
 
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: data.user.id,
-        full_name: fullName,
-        gotra,
-        email,
-      });
-
-      if (profileError) return { error: profileError.message };
-    }
-
+    await loadProfile(user.id);
     return { error: null };
   };
 
@@ -108,7 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshProfile = async () => {
-    if (session?.user) await fetchProfile(session.user.id);
+    if (session?.user) await loadProfile(session.user.id);
   };
 
   const value = useMemo<AuthContextValue>(
@@ -117,8 +177,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user: session?.user ?? null,
       profile,
       loading,
-      signIn,
-      signUp,
+      continueWithEmail,
+      createProfile,
       signOut,
       refreshProfile,
     }),

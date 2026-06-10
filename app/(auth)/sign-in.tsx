@@ -1,4 +1,4 @@
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 
@@ -9,23 +9,41 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export default function SignInScreen() {
-  const { signIn } = useAuth();
+  const { continueWithEmail } = useAuth();
   const scheme = useColorScheme();
   const colors = Colors[scheme ?? 'light'];
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSignIn = async () => {
+  const handleContinue = async () => {
+    if (!email.trim() || !password) {
+      setError('Please enter your email and password.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    const result = await signIn(email.trim(), password);
+    setSuccessMessage(null);
+
+    const result = await continueWithEmail(email.trim(), password);
     setLoading(false);
 
     if (result.error) {
       setError(result.error);
+      return;
+    }
+
+    if (result.needsEmailConfirmation) {
+      setSuccessMessage('Account created. Check your email to confirm, then sign in again.');
+      return;
+    }
+
+    if (result.needsProfile) {
+      router.replace('/(auth)/create-profile');
       return;
     }
 
@@ -39,9 +57,9 @@ export default function SignInScreen() {
       <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.hero} lightColor="transparent" darkColor="transparent">
           <Text style={[styles.om, { color: colors.tint }]}>🙏</Text>
-          <Text style={styles.heading}>Welcome Back</Text>
+          <Text style={styles.heading}>Welcome</Text>
           <Text style={[styles.subheading, { color: colors.textSecondary }]}>
-            Sign in to access temple events, sponsorships, and notifications.
+            Enter your email and password to sign in, or create a new account.
           </Text>
         </View>
 
@@ -63,14 +81,11 @@ export default function SignInScreen() {
         />
 
         {error && <Text style={[styles.error, { color: colors.error }]}>{error}</Text>}
+        {successMessage && (
+          <Text style={[styles.success, { color: colors.tint }]}>{successMessage}</Text>
+        )}
 
-        <Button title="Sign In" onPress={handleSignIn} loading={loading} />
-
-        <Link href="/(auth)/sign-up" style={styles.link}>
-          <Text style={{ color: colors.tint, textAlign: 'center', marginTop: 20 }}>
-            New here? Create an account
-          </Text>
-        </Link>
+        <Button title="Continue" onPress={handleContinue} loading={loading} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -103,7 +118,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-  link: {
-    marginTop: 8,
+  success: {
+    marginBottom: 12,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
