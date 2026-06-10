@@ -10,7 +10,15 @@ export const TEMPLE = {
   workingHours: [
     {
       day: "Monday – Sunday",
-      hours: "8:30 AM – 9:30 AM , 11:00 AM - 1:00 PM, 6:00 PM - 8:30 PM",
+      hours: "8:30 AM – 9:30 AM",
+    },
+    {
+      day: "        ",
+      hours: "11:00 AM - 1:00 PM",
+    },
+    {
+      day: "       ",
+      hours: "6:00 PM - 8:30 PM",
     },
   ],
   aartiTimes: [
@@ -25,7 +33,8 @@ export const TEMPLE = {
     { name: "Mr. Agali Prasad ", role: "Head Priest" },
   ],
   creators: [
-    { name: "Suraj Raju, Shaurya Rai", role: "App Developers, Volunteers" },
+    { name: "Suraj Raju", role: "App Developers, Volunteers" },
+    { name: "Shaurya Rai", role: "App Developers, Volunteers" },
   ],
 };
 
